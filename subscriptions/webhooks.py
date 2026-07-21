@@ -121,14 +121,22 @@ def _upsert_subscription(stripe_sub_id, meta):
 
 
 def _invoice_period_end(obj):
-    """Current period end for an invoice, across Stripe API versions."""
-    ts = obj.get("period_end")
-    if ts:
-        return _ts_to_dt(ts)
-    lines = obj.get("lines", {}).get("data", [])
-    if lines:
-        return _ts_to_dt(lines[0].get("period", {}).get("end"))
-    return None
+    """Current period end for an invoice, across Stripe API versions.
+
+    The line items are authoritative, not the invoice's own `period_end`: on a
+    subscription's first invoice Stripe sets the invoice period to the instant
+    it was created (period_start == period_end), while the line carries the real
+    cycle boundary. Reading the invoice field first stored a period end that had
+    already passed.
+    """
+    ends = [
+        line.get("period", {}).get("end")
+        for line in obj.get("lines", {}).get("data", [])
+        if line.get("period", {}).get("end")
+    ]
+    if ends:
+        return _ts_to_dt(max(ends))
+    return _ts_to_dt(obj.get("period_end"))
 
 
 def _subscription_period_end(obj):
