@@ -61,6 +61,8 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    # Serves collected static files (admin, Swagger UI) straight from gunicorn.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -109,6 +111,10 @@ else:
             "PASSWORD": env("POSTGRES_PASSWORD"),
             "HOST": env("POSTGRES_HOST", default="localhost"),
             "PORT": env("POSTGRES_PORT", default="5432"),
+            # Managed Postgres (Neon/Render) refuses plaintext connections.
+            "OPTIONS": {"sslmode": env("POSTGRES_SSLMODE", default="require")},
+            # Reuse connections; the Neon pooler handles the fan-in.
+            "CONN_MAX_AGE": env.int("CONN_MAX_AGE", default=60),
         }
     }
 
@@ -180,6 +186,17 @@ MIN_START_LEAD_DAYS = env.int("MIN_START_LEAD_DAYS", default=2)
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 
 # ---------------------------------------------------------------------------
+# Proxy / HTTPS — Render terminates TLS and forwards over plain HTTP
+# ---------------------------------------------------------------------------
+CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS", default=[], cast=list)
+
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+# ---------------------------------------------------------------------------
 # I18N / static / media
 # ---------------------------------------------------------------------------
 LANGUAGE_CODE = "en-us"
@@ -191,5 +208,12 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

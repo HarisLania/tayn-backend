@@ -9,8 +9,14 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
+from config.views import health
+
 urlpatterns = [
     path("admin/", admin.site.urls),
+
+    # Uptime monitoring (UptimeRobot) — unauthenticated, returns 200 "OK"
+    path("health/", health, name="health"),
+    path("healthz", health),
 
     # API
     path("api/auth/", include("accounts.urls")),
